@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ADIB SafeLink Resolver</title>
+<style>
+:root{--bg:#080a14;--card:#151827;--card2:#1c2033;--text:#f5f7ff;--muted:#9da4bd;--accent:#7067ff;--border:#2a2f46}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#171638 0,#080a14 42%);color:var(--text);font-family:Inter,system-ui,Arial,sans-serif;min-height:100vh}
+.wrap{width:min(720px,92%);margin:0 auto;padding:52px 0 40px}.brand{text-align:center;margin-bottom:26px}.logo{width:64px;height:64px;margin:auto;border-radius:20px;background:linear-gradient(135deg,#8b5cf6,#4f46e5);display:grid;place-items:center;font-size:30px;box-shadow:0 15px 45px #0008}.brand h1{margin:16px 0 6px;font-size:29px}.brand p{margin:0;color:var(--muted)}
+.card{background:linear-gradient(180deg,#171b2c,#111423);border:1px solid var(--border);border-radius:24px;padding:22px;box-shadow:0 20px 60px #0006}
+label{display:block;font-weight:700;margin-bottom:10px}.inputrow{display:flex;gap:8px;background:var(--card2);padding:8px;border-radius:17px;border:1px solid var(--border)}input{flex:1;min-width:0;background:transparent;border:0;outline:0;color:#fff;font-size:15px;padding:11px}button{border:0;border-radius:13px;padding:11px 15px;font-weight:700;cursor:pointer;background:#30364e;color:#fff}button.primary{width:100%;margin-top:13px;padding:14px;background:linear-gradient(135deg,#756bff,#5147db);font-size:16px}button:disabled{opacity:.55;cursor:not-allowed}
+.status{display:none;margin-top:16px;padding:14px;border-radius:15px;background:#101424;color:var(--muted)}.status.show{display:block}.spinner{display:inline-block;width:15px;height:15px;border:2px solid #ffffff33;border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:-3px;margin-right:8px}@keyframes spin{to{transform:rotate(360deg)}}
+.result{display:none;margin-top:16px}.result.show{display:block}.resultbox{padding:15px;border-radius:16px;background:#0c0f1b;border:1px solid var(--border);word-break:break-all;color:#aeb5ff}.actions{display:flex;gap:8px;margin-top:10px}.actions button{flex:1}.history{margin-top:18px}.history h3{margin:0 0 10px}.item{padding:12px 0;border-bottom:1px solid var(--border);font-size:13px;word-break:break-all}.item small{display:block;color:var(--muted);margin-top:4px}.empty{color:var(--muted);font-size:14px}.footer{text-align:center;color:#656b82;font-size:12px;margin-top:18px}
+@media(max-width:520px){.wrap{padding-top:30px}.inputrow{flex-wrap:wrap}input{flex-basis:100%}.actions{flex-direction:column}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">
+    <div class="logo">↗</div>
+    <h1>ADIB SafeLink Resolver</h1>
+    <p>Resolve redirect HTTP publik dengan cepat.</p>
+  </div>
+  <div class="card">
+    <label for="url">Masukkan link SFL</label>
+    <div class="inputrow">
+      <input id="url" placeholder="https://sfl.gl/xxxxxx" autocomplete="off">
+      <button id="paste">Tempel</button>
+    </div>
+    <button class="primary" id="go">Bypass sekarang</button>
+    <div class="status" id="status"></div>
+    <div class="result" id="result">
+      <label>Link hasil</label>
+      <div class="resultbox" id="final"></div>
+      <div class="actions">
+        <button id="copy">Salin link</button>
+        <button id="open">Buka link</button>
+      </div>
+    </div>
+    <div class="history">
+      <h3>Riwayat</h3>
+      <div id="history" class="empty">Belum ada hasil.</div>
+    </div>
+  </div>
+  <div class="footer">Riwayat hanya disimpan di browser ini.</div>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+let finalUrl="";
+function loadHistory(){
+  const h=JSON.parse(localStorage.getItem("adib_history")||"[]");
+  $("history").innerHTML=h.length?h.map(x=>`<div class="item"><b>${escapeHtml(x.final)}</b><small>${escapeHtml(x.input)} · ${new Date(x.time).toLocaleString("id-ID")}</small></div>`).join(""):'<div class="empty">Belum ada hasil.</div>';
+}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
+function save(input,final){
+  const h=JSON.parse(localStorage.getItem("adib_history")||"[]");
+  h.unshift({input,final,time:Date.now()});
+  localStorage.setItem("adib_history",JSON.stringify(h.slice(0,30)));
+  loadHistory();
+}
+$("paste").onclick=async()=>{
+  try{$("url").value=await navigator.clipboard.readText()}catch{$("status").className="status show";$("status").textContent="Clipboard tidak tersedia. Paste manual."}
+};
+$("go").onclick=async()=>{
+  let input=$("url").value.trim();
+  if(!input){$("status").className="status show";$("status").textContent="Masukkan URL terlebih dahulu.";return}
+  $("go").disabled=true;$("result").className="result";$("status").className="status show";$("status").innerHTML='<span class="spinner"></span>Memproses redirect...';
+  try{
+    const r=await fetch("/api/resolve?url="+encodeURIComponent(input));
+    const data=await r.json();
+    if(!r.ok||!data.ok) throw new Error(data.error||"Gagal memproses.");
+    finalUrl=data.finalUrl;$("final").textContent=finalUrl;$("result").className="result show";$("status").textContent=`Selesai · ${data.hops} redirect`;
+    save(input,finalUrl);
+  }catch(e){$("status").textContent=e.message}
+  finally{$("go").disabled=false}
+};
+$("copy").onclick=async()=>{await navigator.clipboard.writeText(finalUrl);$("copy").textContent="Tersalin";setTimeout(()=>$("copy").textContent="Salin link",1200)};
+$("open").onclick=()=>window.open(finalUrl,"_blank","noopener");
+loadHistory();
+</script>
+</body>
+</html>
